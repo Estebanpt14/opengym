@@ -1,0 +1,65 @@
+name: iOS Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build mobile application
+        working-directory: frontend
+        run: npm run build:mobile
+
+      - name: Install CocoaPods dependencies
+        working-directory: frontend/ios/App
+        run: pod install
+
+      - name: Build iOS
+        working-directory: frontend/ios/App
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package application
+        run: |
+          mkdir -p "$RUNNER_TEMP/Payload"
+
+          cp -R \
+            "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/App.app" \
+            "$RUNNER_TEMP/Payload/openGym.app"
+
+          cd "$RUNNER_TEMP"
+
+          zip -r openGym-ios-unsigned.zip Payload
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openGym-ios
+          path: ${{ runner.temp }}/openGym-ios-unsigned.zip
